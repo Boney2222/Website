@@ -1,0 +1,18 @@
+name: pan_late_pyar
+description: PAN LATE PYAR stationery shop mobile app
+version: 1.0.0
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0            # for calling the PHP API
+  provider: ^6.1.2        # state management (cart, auth, user)
+  shared_preferences: ^2.2.2  # persist session token locally
+  cached_network_image: ^3.3.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
