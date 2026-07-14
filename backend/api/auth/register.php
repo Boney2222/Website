@@ -37,6 +37,7 @@ try {
     $stmt->execute([$name, $email, $hash, $phone !== '' ? $phone : null]);
     $_SESSION['user_id'] = $pdo->lastInsertId();
     $_SESSION['role'] = 'customer';
+    log_action($pdo, $_SESSION['user_id'], "Registered customer account {$email}");
     echo json_encode([
         "success" => true,
         "user" => [

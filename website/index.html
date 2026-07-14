@@ -122,6 +122,24 @@ nav.main-nav a.active::after{
   content:""; position:absolute; left:0; right:0; bottom:-6px; height:3px; background:var(--marigold); border-radius:2px;
 }
 .nav-actions{display:flex; align-items:center; gap:16px;}
+body.role-guest #guestNav,
+body.role-customer #customerNav,
+body.role-admin #adminNav{display:flex !important;}
+body.role-guest #customerNav,
+body.role-guest #adminNav,
+body.role-customer #guestNav,
+body.role-customer #adminNav,
+body.role-admin #guestNav,
+body.role-admin #customerNav{display:none !important;}
+body.role-guest #guestActions,
+body.role-customer #customerActions,
+body.role-admin #adminActions{display:flex !important; align-items:center; gap:14px;}
+body.role-guest #customerActions,
+body.role-guest #adminActions,
+body.role-customer #guestActions,
+body.role-customer #adminActions,
+body.role-admin #guestActions,
+body.role-admin #customerActions{display:none !important;}
 .icon-btn{
   position:relative; background:none; border:none; font-size:1.35rem; color:var(--ink);
   display:flex; align-items:center; justify-content:center; width:38px; height:38px;
@@ -421,7 +439,10 @@ select.sort-select{
    ========================================================= */
 .profile-grid{display:grid; grid-template-columns:230px 1fr; gap:36px; align-items:start;}
 @media (max-width:780px){.profile-grid{grid-template-columns:1fr;}}
-.profile-side{background:var(--card); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow-sm); text-align:center;}
+.profile-side{background:var(--card); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow-sm); text-align:center; min-width:0; overflow:hidden;}
+.profile-side h4,
+#profileEmail{max-width:100%; overflow-wrap:anywhere; word-break:break-word;}
+#profileEmail{line-height:1.35;}
 .avatar-lg{width:84px; height:84px; border-radius:50%; background:var(--ink); color:#fff; display:flex; align-items:center; justify-content:center; margin:0 auto 12px; font-family:'Fraunces',serif; font-size:1.8rem;}
 .tab-btn{
   display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:12px 14px; border-radius:10px;
@@ -779,6 +800,13 @@ select.status-select{border-radius:8px; border:1px solid var(--stitch); padding:
             <div id="addressBlock" style="margin-top:16px;">
               <div class="form-row"><label>Delivery address</label><textarea id="coAddress" rows="3" placeholder="Street, city, postcode"></textarea></div>
             </div>
+            <div id="pickupBlock" class="hidden" style="margin-top:16px;">
+              <div class="form-2col">
+                <div class="form-row"><label>Pickup date</label><input type="date" id="pickupDate" onchange="normalizePickupSlot()"></div>
+                <div class="form-row"><label>Pickup time</label><input type="time" id="pickupTime" min="10:00" max="18:30" step="1800" onchange="normalizePickupSlot()"></div>
+              </div>
+              <p style="font-size:.82rem; color:var(--muted); margin:4px 0 0;">Pickup is available Mon-Sat, 10:00 AM-6:30 PM, up to 14 days ahead.</p>
+            </div>
           </div>
 
           <div class="form-card">
@@ -794,6 +822,10 @@ select.status-select{border-radius:8px; border:1px solid var(--stitch); padding:
                 <div class="form-row"><label>Expiry</label><input type="text" id="cardExpiry" placeholder="MM/YY" inputmode="numeric" maxlength="5" oninput="formatCardExpiry(this)"></div>
                 <div class="form-row"><label>CVC</label><input type="password" id="cardCvv" placeholder="123" inputmode="numeric" maxlength="4" oninput="formatCardCvc(this)"></div>
               </div>
+              <label style="display:flex; gap:8px; align-items:flex-start; font-size:.86rem; color:var(--muted);">
+                <input type="checkbox" id="saveCard" checked>
+                Save this card to my account for future orders. Only card brand, last 4 digits, expiry, and cardholder name are stored.
+              </label>
             </div>
           </div>
         </div>
@@ -906,6 +938,11 @@ select.status-select{border-radius:8px; border:1px solid var(--stitch); padding:
     <div class="admin-side" id="adminSideLogs"></div>
     <div class="admin-main">
       <div class="section-head" style="text-align:left; max-width:none; margin-bottom:20px;"><h2>Activity &amp; security logs</h2><p>Every stock change and status update, timestamped.</p></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
+        <button class="btn btn-outline btn-sm" onclick="downloadAdminLogs()">Download logs CSV</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadAdminOrders()">Download orders CSV</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadAdminProducts()">Download products CSV</button>
+      </div>
       <div id="logsList"></div>
     </div>
   </div>
@@ -1378,6 +1415,7 @@ function setDeliveryOption(val){
   state.checkoutDelivery = val;
   document.querySelectorAll('#deliveryOptionCards .radio-card').forEach(c=>c.classList.toggle('active', c.dataset.val===val));
   document.getElementById('addressBlock').classList.toggle('hidden', val==='pickup');
+  document.getElementById('pickupBlock').classList.toggle('hidden', val!=='pickup');
   renderCheckoutTotals();
 }
 function setPaymentOption(val){
@@ -1386,10 +1424,71 @@ function setPaymentOption(val){
   document.querySelectorAll('#paymentOptionCards .radio-card').forEach(c=>c.classList.toggle('active', c.dataset.val===val));
   document.getElementById('cardPaymentBlock').classList.toggle('hidden', val !== 'card');
 }
+function dateInputValue(date){
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+function isSunday(date){
+  return date.getDay() === 0;
+}
+function addDays(date, days){
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+function nextPickupSlot(){
+  const slot = new Date(Date.now() + 30 * 60000);
+  const minutes = slot.getMinutes();
+  slot.setMinutes(minutes <= 30 ? 30 : 60, 0, 0);
+  if(slot.getHours() < 10) slot.setHours(10, 0, 0, 0);
+  if(slot.getHours() > 18 || (slot.getHours() === 18 && slot.getMinutes() > 30)){
+    slot.setDate(slot.getDate() + 1);
+    slot.setHours(10, 0, 0, 0);
+  }
+  while(isSunday(slot)){
+    slot.setDate(slot.getDate() + 1);
+    slot.setHours(10, 0, 0, 0);
+  }
+  return slot;
+}
+function setupPickupLimits(){
+  const pickupDate = document.getElementById('pickupDate');
+  const pickupTime = document.getElementById('pickupTime');
+  if(!pickupDate || !pickupTime) return;
+  const today = new Date();
+  pickupDate.min = dateInputValue(today);
+  pickupDate.max = dateInputValue(addDays(today, 14));
+  if(!pickupDate.value || !pickupTime.value){
+    const slot = nextPickupSlot();
+    pickupDate.value = dateInputValue(slot);
+    pickupTime.value = `${String(slot.getHours()).padStart(2, '0')}:${String(slot.getMinutes()).padStart(2, '0')}`;
+  }
+}
+function normalizePickupSlot(){
+  setupPickupLimits();
+  const pickupDate = document.getElementById('pickupDate');
+  const pickupTime = document.getElementById('pickupTime');
+  if(!pickupDate || !pickupTime || !pickupDate.value) return;
+  const selectedDate = new Date(`${pickupDate.value}T00:00:00`);
+  if(isSunday(selectedDate)){
+    showToast('Pickup is closed on Sundays');
+    const slot = nextPickupSlot();
+    pickupDate.value = dateInputValue(slot);
+    pickupTime.value = `${String(slot.getHours()).padStart(2, '0')}:${String(slot.getMinutes()).padStart(2, '0')}`;
+    return;
+  }
+  if(!pickupTime.value || pickupTime.value < '10:00') pickupTime.value = '10:00';
+  if(pickupTime.value > '18:30') pickupTime.value = '18:30';
+  const [h, m] = pickupTime.value.split(':').map(Number);
+  pickupTime.value = `${String(h).padStart(2, '0')}:${m < 30 ? '00' : '30'}`;
+}
 function renderCheckout(){
   document.getElementById('checkoutItems').innerHTML = state.cart.map(c =>
     `<div class="mini-item"><span>${c.qty}× ${c.name}</span><span>${money(c.unitPrice*c.qty)}</span></div>`).join('');
   if(state.user){ document.getElementById('coName').value = state.user.name; }
+  setupPickupLimits();
   renderCheckoutTotals();
 }
 function renderCheckoutTotals(){
@@ -1452,6 +1551,7 @@ function receiptHTML(order){
     <div class="receipt-row" style="font-weight:700; border-bottom:none;"><span>Total</span><span>${money(order.total)}</span></div>
     <div style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--stitch); font-size:.85rem; color:var(--ink-2);">
       <b>${order.deliveryMethod==='delivery'?'Delivering to':'Pick up from'}:</b> ${order.deliveryMethod==='delivery' ? order.address : `PAN LATE PYAR, ${SHOP_ADDRESS}`}<br>
+      ${order.deliveryMethod==='pickup' && order.pickupSlot ? `<b>Pickup slot:</b> ${order.pickupSlot}<br>` : ''}
       <b>Payment:</b> ${paymentLabels[order.payment] || 'Cash on delivery'}
     </div>`;
 }
@@ -1695,6 +1795,21 @@ const originalRenderAdminDashboard = renderAdminDashboard;
 const originalRenderAdminLogs = renderAdminLogs;
 const originalShowOrderPage = showOrderPage;
 
+function renderNavForRole(role){
+  state.role = role;
+  document.body.className = 'role-' + role;
+  const switcher = document.getElementById('roleSwitcher');
+  if(switcher) switcher.value = role;
+
+  document.getElementById('guestNav').style.display = role === 'guest' ? 'flex' : 'none';
+  document.getElementById('customerNav').style.display = role === 'customer' ? 'flex' : 'none';
+  document.getElementById('adminNav').style.display = role === 'admin' ? 'flex' : 'none';
+  document.getElementById('guestActions').classList.toggle('hidden', role !== 'guest');
+  document.getElementById('customerActions').classList.toggle('hidden', role !== 'customer');
+  document.getElementById('adminActions').classList.toggle('hidden', role !== 'admin');
+  renderCartBadge();
+}
+
 async function api(path, options = {}){
   const res = await fetch(`${API_BASE}/${path}`, {
     credentials: 'include',
@@ -1763,6 +1878,52 @@ function validateCardPayment(){
   }
   return true;
 }
+function cardBrand(number){
+  if(/^4/.test(number)) return 'Visa';
+  if(/^5[1-5]/.test(number)) return 'Mastercard';
+  return 'Card';
+}
+function cardPayload(){
+  const digits = document.getElementById('cardNumber').value.replace(/\D/g, '');
+  const expiry = document.getElementById('cardExpiry').value.trim().split('/');
+  const yy = Number(expiry[1] || 0);
+  return {
+    cardholder_name: document.getElementById('cardName').value.trim(),
+    brand: cardBrand(digits),
+    last4: digits.slice(-4),
+    expiry_month: Number(expiry[0] || 0),
+    expiry_year: yy < 100 ? 2000 + yy : yy
+  };
+}
+function validatePickupSlot(){
+  if(state.checkoutDelivery !== 'pickup') return true;
+  setupPickupLimits();
+  normalizePickupSlot();
+  const date = document.getElementById('pickupDate').value;
+  const time = document.getElementById('pickupTime').value;
+  if(!date || !time){ showToast('Choose a pickup date and time'); return false; }
+  const selectedDate = new Date(`${date}T00:00:00`);
+  const today = new Date();
+  const maxDate = addDays(today, 14);
+  if(selectedDate < new Date(dateInputValue(today) + 'T00:00:00') || selectedDate > new Date(dateInputValue(maxDate) + 'T23:59:59')){
+    showToast('Pickup must be within the next 14 days');
+    return false;
+  }
+  if(isSunday(selectedDate)){
+    showToast('Pickup is closed on Sundays');
+    return false;
+  }
+  if(time < '10:00' || time > '18:30' || !/:(00|30)$/.test(time)){
+    showToast('Pickup is Mon-Sat, 10:00 AM-6:30 PM in 30-minute slots');
+    return false;
+  }
+  const pickupAt = new Date(`${date}T${time}:00`);
+  if(Number.isNaN(pickupAt.getTime()) || pickupAt < new Date(Date.now() + 30 * 60000)){
+    showToast('Choose a future pickup time');
+    return false;
+  }
+  return true;
+}
 
 function dbCategoryToUi(row){
   return {id: row.slug, dbId: Number(row.category_id), name: row.name, icon: row.icon || ''};
@@ -1801,6 +1962,7 @@ function dbOrderToUi(row, items = []){
     status: row.status,
     deliveryMethod: row.delivery_method,
     address: row.delivery_method === 'delivery' ? 'Delivery address saved with order' : null,
+    pickupSlot: row.pickup_date && row.pickup_time ? `${row.pickup_date} ${String(row.pickup_time).slice(0, 5)}` : '',
     payment: row.payment_method,
     subtotal: Number(row.subtotal),
     deliveryFee: Number(row.delivery_fee),
@@ -1865,17 +2027,13 @@ async function restoreSession(){
   try {
     const data = await api('auth/me.php');
     state.user = {name: data.user.full_name, email: data.user.email, role: data.user.role};
-    state.role = data.user.role;
-    document.body.className = 'role-' + state.role;
-    document.getElementById('guestNav').style.display = 'none';
-    document.getElementById('customerNav').style.display = state.role === 'customer' ? 'flex' : 'none';
-    document.getElementById('adminNav').style.display = state.role === 'admin' ? 'flex' : 'none';
-    document.getElementById('guestActions').classList.add('hidden');
-    document.getElementById('customerActions').classList.toggle('hidden', state.role !== 'customer');
-    document.getElementById('adminActions').classList.toggle('hidden', state.role !== 'admin');
+    renderNavForRole(data.user.role);
     await loadCart();
     return true;
   } catch (err) {
+    state.user = null;
+    state.cart = [];
+    renderNavForRole('guest');
     return false;
   }
 }
@@ -1908,14 +2066,7 @@ handleLogin = async function(){
   try {
     const data = await api('auth/login.php', {method:'POST', body: JSON.stringify({email, password})});
     state.user = {name: data.user.full_name, email: data.user.email, role: data.user.role};
-    state.role = data.user.role;
-    document.body.className = 'role-' + state.role;
-    document.getElementById('guestNav').style.display = state.role === 'guest' ? 'flex' : 'none';
-    document.getElementById('customerNav').style.display = state.role === 'customer' ? 'flex' : 'none';
-    document.getElementById('adminNav').style.display = state.role === 'admin' ? 'flex' : 'none';
-    document.getElementById('guestActions').classList.toggle('hidden', state.role !== 'guest');
-    document.getElementById('customerActions').classList.toggle('hidden', state.role !== 'customer');
-    document.getElementById('adminActions').classList.toggle('hidden', state.role !== 'admin');
+    renderNavForRole(data.user.role);
     await loadCart();
     showToast('Logged in successfully');
     goTo(state.role === 'admin' ? 'admin-dashboard' : 'home');
@@ -1937,14 +2088,7 @@ handleSignup = async function(){
   try {
     const data = await api('auth/register.php', {method:'POST', body: JSON.stringify(payload)});
     state.user = {name: data.user.full_name, email: data.user.email, role: data.user.role};
-    state.role = 'customer';
-    document.body.className = 'role-customer';
-    document.getElementById('guestNav').style.display = 'none';
-    document.getElementById('customerNav').style.display = 'flex';
-    document.getElementById('adminNav').style.display = 'none';
-    document.getElementById('guestActions').classList.add('hidden');
-    document.getElementById('customerActions').classList.remove('hidden');
-    document.getElementById('adminActions').classList.add('hidden');
+    renderNavForRole(data.user.role);
     showToast('Account created');
     goTo('home');
   } catch (err) {
@@ -1994,11 +2138,17 @@ confirmOrder = async function(){
   const phone = document.getElementById('coPhone').value.trim();
   if(!name || !phone){ showToast('Fill in your name and contact number'); return; }
   if(!isValidPhone(phone)){ showToast('Enter a valid phone number'); return; }
+  if(state.checkoutDelivery==='delivery' && !document.getElementById('coAddress').value.trim()){
+    showToast('Add a delivery address'); return;
+  }
+  if(!validatePickupSlot()) return;
   if(state.checkoutPayment === 'card' && !validateCardPayment()) return;
   try {
     const payload = {
       delivery_method: state.checkoutDelivery,
       payment_method: state.checkoutPayment,
+      pickup_date: state.checkoutDelivery === 'pickup' ? document.getElementById('pickupDate').value : null,
+      pickup_time: state.checkoutDelivery === 'pickup' ? document.getElementById('pickupTime').value : null,
       items: state.cart.map(c => ({
         product_id: c.productId,
         variation_label: c.variationLabel,
@@ -2007,6 +2157,10 @@ confirmOrder = async function(){
         quantity: c.qty
       }))
     };
+    if(state.checkoutPayment === 'card'){
+      payload.card = cardPayload();
+      payload.save_card = document.getElementById('saveCard').checked;
+    }
     const created = await api('orders/create.php', {method:'POST', body: JSON.stringify(payload)});
     state.cart = [];
     renderCartBadge();
@@ -2037,11 +2191,13 @@ saveProduct = async function(){
     category_id: cat?.dbId || 1,
     name,
     description: document.getElementById('mDesc').value.trim(),
-    price: parseFloat(document.getElementById('mPrice').value) || 0,
-    stock_qty: parseInt(document.getElementById('mStock').value) || 0,
+    price: Number(document.getElementById('mPrice').value),
+    stock_qty: Number.parseInt(document.getElementById('mStock').value, 10),
     image_url: document.getElementById('mImage').value.trim()
   };
   if(!name){ showToast('Give the product a name'); return; }
+  if(!Number.isFinite(payload.price) || payload.price < 0){ showToast('Price cannot be less than 0'); return; }
+  if(!Number.isInteger(payload.stock_qty) || payload.stock_qty < 0){ showToast('Stock cannot be less than 0'); return; }
   try {
     if(state.editingProductId){
       await api('products/update.php', {method:'PUT', body: JSON.stringify({...payload, product_id: state.editingProductId})});
@@ -2078,6 +2234,38 @@ updateOrderStatus = async function(orderId, newStatus){
   }
 };
 
+function csvEscape(value){
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+function downloadCsv(filename, rows){
+  const csv = rows.map(row => row.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function downloadAdminLogs(){
+  window.location.href = `${API_BASE}/admin/logs.php?download=csv`;
+}
+async function downloadAdminOrders(){
+  await loadOrders(true);
+  downloadCsv('admin-orders.csv', [
+    ['Order', 'Customer', 'Items', 'Total', 'Delivery', 'Payment', 'Status', 'Date'],
+    ...state.orders.map(o => [o.code, o.customerName || '', o.items.length, o.total, o.deliveryMethod, paymentLabels[o.payment] || o.payment, statusLabels[o.status] || o.status, o.date])
+  ]);
+}
+async function downloadAdminProducts(){
+  await loadCatalog();
+  downloadCsv('admin-products.csv', [
+    ['Product ID', 'Name', 'Category', 'Price', 'Stock'],
+    ...state.productsList.map(p => [p.id, p.name, p.category, p.price, p.stock])
+  ]);
+}
+
 (async function bootXamppApp(){
   const switcher = document.querySelector('.preview-switch');
   if(switcher) switcher.classList.add('hidden');
@@ -2085,6 +2273,7 @@ updateOrderStatus = async function(orderId, newStatus){
   const restored = await restoreSession();
   originalRenderHomeAndLanding();
   if(restored) goTo(state.role === 'admin' ? 'admin-dashboard' : 'home');
+  else goTo('landing');
 })();
 </script>
 </body>

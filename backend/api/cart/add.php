@@ -17,15 +17,21 @@ if ($stock === false) {
     exit;
 }
 
-$cartStmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM cart_items WHERE user_id = ? AND product_id = ? AND (variation_id <=> ?)");
+$cartStmt = $pdo->prepare("SELECT cart_item_id, quantity FROM cart_items WHERE user_id = ? AND product_id = ? AND (variation_id <=> ?) ORDER BY cart_item_id LIMIT 1");
 $cartStmt->execute([$_SESSION['user_id'], $product_id, $variation_id]);
-$existingQty = (int)$cartStmt->fetchColumn();
+$existingItem = $cartStmt->fetch();
+$existingQty = (int)($existingItem['quantity'] ?? 0);
 if ($existingQty + $quantity > (int)$stock) {
     http_response_code(422);
     echo json_encode(["error" => "Only {$stock} item(s) available"]);
     exit;
 }
 
-$stmt = $pdo->prepare("INSERT INTO cart_items (user_id, product_id, variation_id, quantity) VALUES (?, ?, ?, ?)");
-$stmt->execute([$_SESSION['user_id'], $product_id, $variation_id, $quantity]);
+if ($existingItem) {
+    $stmt = $pdo->prepare("UPDATE cart_items SET quantity = quantity + ? WHERE cart_item_id = ? AND user_id = ?");
+    $stmt->execute([$quantity, $existingItem['cart_item_id'], $_SESSION['user_id']]);
+} else {
+    $stmt = $pdo->prepare("INSERT INTO cart_items (user_id, product_id, variation_id, quantity) VALUES (?, ?, ?, ?)");
+    $stmt->execute([$_SESSION['user_id'], $product_id, $variation_id, $quantity]);
+}
 echo json_encode(["success" => true]);

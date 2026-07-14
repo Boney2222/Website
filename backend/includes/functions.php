@@ -5,8 +5,12 @@ function generate_order_code() {
 }
 
 function log_action($pdo, $user_id, $action) {
-    $stmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, ip_address) VALUES (?, ?, ?)");
-    $stmt->execute([$user_id, $action, $_SERVER['REMOTE_ADDR'] ?? '']);
+    try {
+        $stmt = $pdo->prepare("INSERT INTO activity_logs (user_id, action, ip_address) VALUES (?, ?, ?)");
+        $stmt->execute([$user_id ?: null, $action, $_SERVER['REMOTE_ADDR'] ?? '']);
+    } catch (Throwable $e) {
+        error_log("Activity log failed: " . $e->getMessage());
+    }
 }
 
 function is_valid_email($email) {

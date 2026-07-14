@@ -17,9 +17,11 @@ $user = $stmt->fetch();
 if ($user && password_verify($password, $user['password_hash'])) {
     $_SESSION['user_id'] = $user['user_id'];
     $_SESSION['role'] = $user['role'];
+    log_action($pdo, $user['user_id'], "Successful login for {$user['email']}");
     unset($user['password_hash']);
     echo json_encode(["success" => true, "user" => $user]);
 } else {
+    log_action($pdo, null, "Failed login attempt for {$email}");
     http_response_code(401);
     echo json_encode(["error" => "Invalid email or password"]);
 }

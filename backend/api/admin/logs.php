@@ -16,4 +16,18 @@ $stmt = $pdo->query("
     ORDER BY l.created_at DESC, l.log_id DESC
     LIMIT 100
 ");
-echo json_encode($stmt->fetchAll());
+$logs = $stmt->fetchAll();
+
+if (isset($_GET['download']) && $_GET['download'] === 'csv') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="admin-security-logs-' . date('Ymd-His') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Log ID', 'Admin', 'Action', 'IP Address', 'Created At']);
+    foreach ($logs as $log) {
+        fputcsv($out, [$log['log_id'], $log['full_name'], $log['action'], $log['ip_address'], $log['created_at']]);
+    }
+    fclose($out);
+    exit;
+}
+
+echo json_encode($logs);
